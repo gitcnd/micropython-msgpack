@@ -1,3 +1,12 @@
+# ABOUT THIS FORK
+
+I combined the essential parts of this package into one file.
+
+Please the umsgpack.py or umsgpack.mpy into your /lib folder and enjoy.
+
+The async code is not included.
+
+
 # 1. MicroPython MessagePack Introduction
 
 [MessagePack](http://msgpack.org/) is a serialization protocol similar to JSON.

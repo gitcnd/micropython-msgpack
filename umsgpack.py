@@ -265,7 +265,7 @@ def _pack_boolean(obj, fp):
     fp.write(b"\xc3" if obj else b"\xc2")
 
 
-def _pack_float(obj, fp, options):
+def _pack_float(obj, fp, **options):
     fpr = options.get('force_float_precision', _float_precision)
     if fpr == "double":
         fp.write(b"\xcb")
@@ -331,7 +331,7 @@ def _pack_ext(obj, fp, tb = b'\x00\xd4\xd5\x00\xd6\x00\x00\x00\xd7\x00\x00\x00\x
         raise UnsupportedTypeException("huge ext data")
     fp.write(od)
 
-def _pack_array(obj, fp, options):
+def _pack_array(obj, fp, **options):
     obj_len = len(obj)
     if obj_len < 16:
         fp.write(struct.pack("B", 0x90 | obj_len))
@@ -345,9 +345,9 @@ def _pack_array(obj, fp, options):
         raise UnsupportedTypeException("huge array")
 
     for e in obj:
-        dump(e, fp, options)
+        dump(e, fp, **options)
 
-def _pack_map(obj, fp, options):
+def _pack_map(obj, fp, **options):
     obj_len = len(obj)
     if obj_len < 16:
         fp.write(struct.pack("B", 0x80 | obj_len))
@@ -361,8 +361,8 @@ def _pack_map(obj, fp, options):
         raise UnsupportedTypeException("huge array")
 
     for k, v in obj.items():
-        dump(k, fp, options)
-        dump(v, fp, options)
+        dump(k, fp, **options)
+        dump(v, fp, **options)
 
 def _utype(obj):
     raise UnsupportedTypeException("unsupported type: {:s}".format(str(type(obj))))
@@ -387,15 +387,15 @@ def dump(obj, fp, **options):
     elif isinstance(obj, int):
         _pack_integer(obj, fp)
     elif isinstance(obj, float):
-        _pack_float(obj, fp, options)
+        _pack_float(obj, fp, **options)
     elif isinstance(obj, str):
         _pack_string(obj, fp)
     elif isinstance(obj, bytes):
         _pack_binary(obj, fp)
     elif isinstance(obj, (list, tuple)):
-        _pack_array(obj, fp, options)
+        _pack_array(obj, fp, **options)
     elif isinstance(obj, dict):
-        _pack_map(obj, fp, options)
+        _pack_map(obj, fp, **options)
     elif isinstance(obj, Ext):
         _pack_ext(obj, fp)
     elif ext_handlers:
@@ -422,7 +422,7 @@ def dump(obj, fp, **options):
 
 def dumps(obj, **options):
     fp = io.BytesIO()
-    dump(obj, fp, options)
+    dump(obj, fp, **options)
     return fp.getvalue()
 
 
@@ -484,7 +484,7 @@ def _unpack_float(code, fp):
     _fail()
 
 
-def _unpack_string(code, fp, options):
+def _unpack_string(code, fp, **options):
     ic = ord(code)
     if (ic & 0xe0) == 0xa0:
         length = ic & ~0xe0
@@ -520,7 +520,7 @@ def _unpack_binary(code, fp):
     return _read_except(fp, length)
 
 
-def _unpack_ext(code, fp, options):
+def _unpack_ext(code, fp, **options):
     ic = ord(code)
     n = b'\xd4\xd5\xd6\xd7\xd8'.find(code)
     length = 0 if n < 0 else 1 << n
@@ -553,7 +553,7 @@ def _unpack_ext(code, fp, options):
 
     return ext
 
-def _unpack_array(code, fp, options):
+def _unpack_array(code, fp, **options):
     ic = ord(code)
     if (ic & 0xf0) == 0x90:
         length = (ic & ~0xf0)
@@ -563,7 +563,7 @@ def _unpack_array(code, fp, options):
         length = _re0(">I", fp, 4)
     else:
         _fail()
-    g = (load(fp, options) for i in range(length))  # generator
+    g = (load(fp, **options) for i in range(length))  # generator
     return tuple(g) if options.get('use_tuple') else list(g)
 
 
@@ -573,7 +573,7 @@ def _deep_list_to_tuple(obj):
     return obj
 
 
-def _unpack_map(code, fp, options):
+def _unpack_map(code, fp, **options):
     ic = ord(code)
     if (ic & 0xf0) == 0x80:
         length = (ic & ~0xf0)
@@ -588,7 +588,7 @@ def _unpack_map(code, fp, options):
         else collections.OrderedDict()
     for _ in range(length):
         # Unpack key
-        k = load(fp, options)
+        k = load(fp, **options)
 
         if isinstance(k, list):
             # Attempt to convert list into a hashable tuple
@@ -603,7 +603,7 @@ def _unpack_map(code, fp, options):
                 "duplicate key: \"{:s}\" ({:s})".format(str(k), str(type(k))))
 
         # Unpack value
-        v = load(fp, options)
+        v = load(fp, **options)
 
         try:
             d[k] = v
@@ -621,30 +621,30 @@ def load(fp, **options):
     if ic <= 0xc9:
         if ic <= 0xc3:
             if ic <= 0x8f:
-                return _unpack_map(code, fp, options)
+                return _unpack_map(code, fp, **options)
             if ic <= 0x9f:
-                return _unpack_array(code, fp, options)
+                return _unpack_array(code, fp, **options)
             if ic <= 0xbf:
-                return _unpack_string(code, fp, options)
+                return _unpack_string(code, fp, **options)
             if ic == 0xc1:
                 raise ReservedCodeException("got reserved code: 0xc1")
             return (None, 0, False, True)[ic - 0xc0]
         if ic <= 0xc6:
             return _unpack_binary(code, fp)
-        return _unpack_ext(code, fp, options)
+        return _unpack_ext(code, fp, **options)
     if ic <= 0xcb:
         return _unpack_float(code, fp)
     if ic <= 0xd8:
-        return _unpack_ext(code, fp, options)
+        return _unpack_ext(code, fp, **options)
     if ic <= 0xdb:
-        return _unpack_string(code, fp, options)
+        return _unpack_string(code, fp, **options)
     if ic <= 0xdd:
-        return _unpack_array(code, fp, options)
-    return _unpack_map(code, fp, options)
+        return _unpack_array(code, fp, **options)
+    return _unpack_map(code, fp, **options)
 
 # Interface to __init__.py
 
 def loads(s, **options):
     if not isinstance(s, (bytes, bytearray)):
         raise TypeError("packed data must be type 'bytes' or 'bytearray'")
-    return load(io.BytesIO(s), options)
+    return load(io.BytesIO(s), **options)
